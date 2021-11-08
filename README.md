@@ -1,6 +1,8 @@
 # esc-pos-encoder
 
-Create a set of commands that can be send to any receipt printer that supports ESC/POS
+Create a set of commands that can be send to any receipt printer that supports ESC/POS.
+
+Before you use this library, you should also consider [ThermalPrinterEncoder](https://github.com/NielsLeenheer/ThermalPrinterEncoder), which is based on [EscPosEncoder](https://github.com/NielsLeenheer/EscPosEncoder), but also adds support for the StarPRNT language by using [StarPrntEncoder](https://github.com/NielsLeenheer/StarPrntEncoder). The API of ThermalPrinter is identical to this one and you should just be able to swap it out without any further changes.
 
 ## Usage
 
@@ -21,9 +23,11 @@ Then, require the package and use it like so:
         .qrcode('https://nielsleenheer.com')
         .encode();
 
-All commands can be chained, except for `encode()` which will return the result as an Uint8Array which contains all the bytes that need to be send to the printer.
+## Commands
 
 You can reuse the instantiated `EscPosEncoder` class to generate multiple commands or sets of commands for the same printer. It will remember settings like code page, so you don't have to specify that on subsequent use. That does rely on that previous commands were actually send to the printer. 
+
+All commands can be chained, except for `encode()` which will return the result as an Uint8Array which contains all the bytes that need to be send to the printer.
 
 The following commands are available:
 
@@ -46,11 +50,77 @@ If you don't specify a code page, it will assume you want to print only ASCII ch
     let result = encoder
         .codepage('windows1251')
         .text('Iñtërnâtiônàlizætiøn')
-        .codepage('cp936')
-        .text('简体中文')
+        .codepage('cp737')
+        .text('ξεσκεπάζω την ψυχοφθόρα βδελυγμία')
         .encode()
 
-The following code pages are supported: cp437, cp737, cp850, cp775, cp852, cp855, cp857, cp858, cp860, cp861, cp862, cp863, cp864, cp865, cp866, cp869, cp874, cp936, cp949, cp950, cp1252, iso88596, shiftjis, windows1250, windows1251, windows1252, windows1253, windows1254, windows1255, windows1256, windows1257, windows1258.
+The following code pages are supported: cp437, cp720, cp737, cp775, cp850, cp851, cp852, cp853, cp855, cp857, cp858, cp860, cp861, cp862, cp863, cp864, cp865, cp866, cp869, cp874, cp922, cp1098, cp1118, cp1119, cp1125, cp2001, cp3001, cp3002, cp3011, cp3012, cp3021, cp3041, cp3840, cp3841, cp3843, cp3844, cp3845, cp3846, cp3847, cp3848, iso885915, iso88592, iso88597, rk1048, windows1250, windows1251, windows1252, windows1253, windows1254, windows1255, windows1256, windows1257, windows1258.
+
+#### Printer support
+
+Support for one specific code pages is not only dependant on this library, even more important is that the printer understands it. And support for code pages depend on manufacturer and model. Some only support a few, some support most of these. There are probably no printers that support all of them. 
+
+Before choosing a code page, check the technical manual of your printer which codepages are supported. If your printer does not support a code page that you need, you are out of luck and nothing this library does can help you solve this problem. 
+
+#### Advanced text compositing
+
+For some languages it might even be better to print text as an image, because receipt printers do not support advanced text compositing required by some languages, such as Arabic. You can do this by creating a Canvas and drawing your text on there. When finished, you can then use the canvas as a parameter of the `.image()` method to send it to the printer.
+
+#### Code page mappings
+
+By default this library uses the Epson code page mappings and Epson printers will support most of the code pages out of the box. However, other manufacturers might support the same code pages, but use a different mapping. That means that even though
+the printer supports the code page, the way to activate it is different for that printer. This library does support a number of code page mappings for other manufacturers, such as `bixolon`, `zjiang` and `star` (in ESC/POS emulation mode).
+
+You can activate these alternative mappings with a parameter when the library is instantiated:
+
+    let encoder = new EscPosEncoder({ 
+        codepageMapping: 'bixolon' 
+    });
+
+If you want to use a code page mapping that is specific to your printer, you can also specify an object with the correct mappings:
+
+    let encoder = new EscPosEncoder({ 
+        codepageMapping: {
+            'cp437': 0x00,
+            'cp850': 0x02,
+            'cp860': 0x03,
+            'cp863': 0x04,
+            'cp865': 0x05,
+            'cp851': 0x0b,
+            'cp858': 0x13,
+        } 
+    });
+
+Each property name must be one of the code pages supported by this library and the value is the number which is used for that code page on your printer. 
+
+
+#### Auto encoding
+
+It is also possible to enable auto encoding of code pages. The library will then automatically switch between code pages depending on the text that you want to print. 
+
+    let result = encoder
+        .codepage('auto')
+        .text('Iñtërnâtiônàlizætiøn')
+        .text('διεθνοποίηση')
+        .text('интернационализация')
+        .encode()
+
+Or even mix code pages within the same text:
+
+    let result = encoder
+        .codepage('auto')
+        .text('You can mix ελληνική γλώσσα and русский язык')
+        .encode()
+
+By default the library only considers some of the most common code pages when detecting the right code page for each letter. If you want to add another code page candidate or remove on, because it is not supported by your printer, you can. You can customize the candidate code pages by setting an option during instantiation of the library:
+
+    let encoder = new EscPosEncoder({ 
+        codepageCandidates: [
+            'cp437', 'cp858', 'cp860', 'cp861', 'cp863', 'cp865',
+            'cp852', 'cp857', 'cp855', 'cp866', 'cp869',
+        ]
+    });
+
 
 ### Text
 
@@ -160,6 +230,26 @@ It will try to remember the current state of the text style. But you can also pr
 
 Note: this text style is not supported by most receipt printers. 
 
+### Invert
+
+Change the style to white text on a black background. 
+
+    let result = encoder
+        .text('This is ')
+        .invert()
+        .text('white text on black')
+        .invert()
+        .encode()
+
+It will try to remember the current state of the text style. But you can also provide and additional parameter to force the text style to turn on and off.
+
+    let result = encoder
+        .text('This is ')
+        .invert(true)
+        .text('white text on black')
+        .invert(false)
+        .encode()
+
 ### Align
 
 Change the alignment of the text. You can specify the alignment using a parameter which can be either "left", "center" or "right".
@@ -179,10 +269,95 @@ Change the text size. You can specify the size using a parameter which can be ei
 
     let result = encoder
         .size('small')
-        .line('A line of small text)
+        .line('A line of small text')
         .size('normal')
-        .line('A line of normal text)
+        .line('A line of normal text')
         .encode()
+
+### Width
+
+Change the text width. You can specify the width using a parameter which can be a number from 1 to 8.
+
+    let result = encoder
+        .width(2)
+        .line('A line of text twice as wide')
+        .width(3)
+        .line('A line of text three times as wide')
+        .width(1)
+        .line('A line of text with normal width')
+        .encode()
+
+Not all printers support all widths, it is probably best to not go over 4x at the most just to be safe.
+
+### Height
+
+Change the text height. You can specify the height using a parameter which can be a number from 1 to 8.
+
+    let result = encoder
+        .height(2)
+        .line('A line of text twice as high')
+        .height(3)
+        .line('A line of text three times as high')
+        .height(1)
+        .line('A line of text with normal height')
+        .encode()
+
+Not all printers support all heights, it is probably best to not go over 4x at the most just to be safe.
+
+Also, you can combine this command with the width command to make the text bigger. For example:
+
+    let result = encoder
+        .width(2)
+        .width(2)
+        .line('This text is twice as large as normal text')
+        .height(1)
+        .height(1)
+        .encode()
+
+
+### Table
+
+Insert a table with multiple columns. The contents of each cell can be a string, or a callback function.
+
+    let result = encoder
+        .table(
+            [
+                { width: 36, marginRight: 2, align: 'left' },
+                { width: 10, align: 'right' }
+            ], 
+            [
+                [ 'Item 1', '€ 10,00' ],
+                [ 'Item 2', '15,00' ],
+                [ 'Item 3', '9,95' ],
+                [ 'Item 4', '4,75' ],
+                [ 'Item 5', '211,05' ],
+                [ '', '='.repeat(10) ],
+                [ 'Total', (encoder) => encoder.bold().text('€ 250,75').bold() ],
+            ]
+        )	
+        .encode()
+
+
+### Box
+
+Insert a bordered box. The content of the box can be a string, or a callback function.
+
+    let result = encoder
+        .box(
+            { width: 30, align: 'right', style: 'double', marginLeft: 10 }, 
+            'The quick brown fox jumps over the lazy dog
+        )
+        .encode()
+
+
+### Rule
+
+Insert a horizontal rule.
+
+    let result = encoder
+        .rule({ style: 'double' })  
+        .encode()
+
 
 ### Barcode
 
@@ -291,9 +466,21 @@ The fifth paramter is the threshold that will be used by the threshold and bayer
     
     img.onload = function() {
         let result = encoder
-            .image(img, 300, 300, 'atkinson')
+            .image(img, 320, 320, 'atkinson')
             .encode()
     }
+
+#### Column or raster image mode
+
+Depending on how new your printer is you might want to use 'column' mode or 'raster' mode. The default is 'column'. The main difference is how images are encoded. Some newer printers do not support 'raster' mode images, while some older printer do not support 'column' mode images. It may depend on the printer model what mode you should use.
+
+To opt in to 'raster' mode you need to provide the constructor of the `EscPosEncoder` class with an options object with the property `imageMode` set to `raster`.
+
+    let encoder = new EscPosEncoder({ 
+        imageMode: 'raster' 
+    });
+
+_Note: In EscPosEncoder 1.x the 'raster' image mode was the default mode. This changed in EscPosEncoder 2.0 as 'column' image mode will be more future compatible._
 
 ### Cut
 
@@ -305,9 +492,27 @@ Cut the paper. Optionally a parameter can be specified which can be either be "p
 
 Note: Not all printer models support cutting paper. And even if they do, they might not support both types of cuts.
 
+### Pulse
+
+Send a pulse to an external device, such as a beeper or cash drawer. 
+
+    let result = encoder
+        .pulse()
+        .encode()
+
+The first parameter is the device where you want to send the pulse. This can be 0 or 1 depending how the device is connected. This parameter is optional an by default it will be send to device 0.
+
+The second parameter is how long the pulse should be active in milliseconds, with a default of 100 milliseconds
+
+The third parameter is how long there should be a delay after the pulse has been send in milliseconds, with a default of 500 milliseconds.
+
+    let result = encoder
+        .pulse(0, 100, 500)
+        .encode()
+
 ### Raw
 
-Add raw printer commands, in case you want to send a command that this library does not support natively. For example the following command is to turn of Hanzi character mode.
+Add raw printer commands, in case you want to send a command that this library does not support natively. For example the following command is to turn of Kanji character mode.
 
     let result = encoder
         .raw([ 0x1c, 0x2e ])
